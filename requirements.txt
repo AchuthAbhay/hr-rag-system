@@ -1,0 +1,28 @@
+# ===== Core LangChain Stack =====
+langchain>=0.2.0
+langchain-community>=0.2.0
+langchain-text-splitters>=0.2.0
+langchain-ollama>=0.1.0
+
+# ===== Embeddings =====
+sentence-transformers>=2.6.0
+
+# ===== Vector Database =====
+qdrant-client>=1.9.0
+
+# ===== API Backend =====
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# ===== Document Loaders =====
+pypdf>=4.2.0
+unstructured>=0.14.0
+markdown>=3.6
+
+# ===== Validation / Schemas =====
+pydantic>=2.6.0
+
+# ===== Utilities =====
+numpy>=1.26.0
+scikit-learn>=1.4.0

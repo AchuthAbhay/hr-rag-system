@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# Data folders
+data/hr_docs/*
+data/uploads/*
+
+# But keep folder + readme
+!data/hr_docs/README.md
+!data/uploads/README.md
+
+# Qdrant / DB files if local
+*.db
+*.sqlite3
+
+# Node (if any later)
+node_modules/
