@@ -88,7 +88,7 @@ def main():
     vectorstore = get_vectorstore()
 
     retriever = vectorstore.as_retriever(
-        search_kwargs={"k": 4}
+        search_kwargs={"k": 6}
     )
 
     chain = build_chain(retriever)

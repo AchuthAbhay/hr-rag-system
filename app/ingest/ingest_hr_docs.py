@@ -131,16 +131,16 @@ def store_in_qdrant(chunks):
 
         doc_id = str(uuid.uuid4())
 
-        # ---- FLAT PAYLOAD (IMPORTANT FIX) ----
+        # ✅ NESTED PAYLOAD (CORRECT)
         payload = {
-            "page_content": doc.page_content
+            "page_content": doc.page_content,
+            "metadata": {
+                "source_file": doc.metadata.get("source_file", "unknown"),
+                "file_type": doc.metadata.get("file_type", "unknown"),
+                "chunk_id": i
+            }
         }
 
-        # flatten metadata into payload
-        for k, v in doc.metadata.items():
-            payload[k] = v
-
-        # ---- Qdrant point ----
         points.append(
             models.PointStruct(
                 id=doc_id,
@@ -154,7 +154,7 @@ def store_in_qdrant(chunks):
             doc_id=doc_id,
             source_file=doc.metadata.get("source_file"),
             chunk_id=i,
-            metadata=doc.metadata
+            metadata=payload["metadata"]  # ✅ Pass the metadata dict
         )
 
     client.upsert(
@@ -163,6 +163,7 @@ def store_in_qdrant(chunks):
     )
 
     print("✅ Stored embeddings in Qdrant + Mongo")
+
 
 
 # -------------------------

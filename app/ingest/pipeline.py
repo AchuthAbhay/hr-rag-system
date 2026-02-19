@@ -8,11 +8,16 @@ from langchain_community.document_loaders import (
 )
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from qdrant_client import QdrantClient, models
 
 from app.db.mongo import store_doc_metadata
+
+
+# =========================================================
+# CONFIG
+# =========================================================
 
 QDRANT_URL = "http://localhost:6333"
 COLLECTION_NAME = "hr_knowledge_base"
@@ -21,9 +26,9 @@ CHUNK_SIZE = 700
 CHUNK_OVERLAP = 100
 
 
-# -------------------------
-# LOAD SINGLE FILE
-# -------------------------
+# =========================================================
+# LOAD FILE
+# =========================================================
 
 def load_file(path: Path):
 
@@ -31,15 +36,19 @@ def load_file(path: Path):
 
     if suffix == ".pdf":
         loader = PyPDFLoader(str(path))
+
     elif suffix == ".txt":
         loader = TextLoader(str(path), encoding="utf-8")
+
     elif suffix in [".md", ".markdown"]:
         loader = UnstructuredMarkdownLoader(str(path))
+
     else:
-        raise ValueError("Unsupported file type")
+        raise ValueError(f"Unsupported file type: {path.name}")
 
     docs = loader.load()
 
+    # attach metadata correctly
     for d in docs:
         d.metadata["source_file"] = path.name
         d.metadata["file_type"] = suffix.replace(".", "")
@@ -47,9 +56,9 @@ def load_file(path: Path):
     return docs
 
 
-# -------------------------
-# SPLIT
-# -------------------------
+# =========================================================
+# SPLIT DOCS
+# =========================================================
 
 def split_docs(docs):
 
@@ -59,12 +68,14 @@ def split_docs(docs):
         separators=["\n\n", "\n", ". ", " "],
     )
 
-    return splitter.split_documents(docs)
+    chunks = splitter.split_documents(docs)
+
+    return chunks
 
 
-# -------------------------
-# STORE
-# -------------------------
+# =========================================================
+# STORE IN QDRANT (CRITICAL FIX HERE)
+# =========================================================
 
 def embed_and_store(chunks):
 
@@ -74,18 +85,27 @@ def embed_and_store(chunks):
 
     client = QdrantClient(QDRANT_URL)
 
-    texts = [d.page_content for d in chunks]
+    print("📐 Creating embeddings...")
+
+    texts = [c.page_content for c in chunks]
     vectors = embeddings.embed_documents(texts)
 
-    # create collection if missing
-    if not client.collection_exists(COLLECTION_NAME):
-        client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=models.VectorParams(
-                size=len(vectors[0]),
-                distance=models.Distance.COSINE,
-            ),
-        )
+    # recreate collection cleanly
+    if client.collection_exists(COLLECTION_NAME):
+        print("🗑 Collection exists. Deleting...")
+        client.delete_collection(COLLECTION_NAME)
+
+    print("🗄 Creating collection...")
+
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=models.VectorParams(
+            size=len(vectors[0]),
+            distance=models.Distance.COSINE,
+        ),
+    )
+
+    print("⬆ Uploading vectors...")
 
     points = []
 
@@ -93,10 +113,15 @@ def embed_and_store(chunks):
 
         doc_id = str(uuid.uuid4())
 
+        # ✅ NESTED PAYLOAD (LangChain-compatible)
         payload = {
-            "page_content": doc.page_content,
-            **doc.metadata
-        }
+    "page_content": doc.page_content,
+    "metadata": {
+        "source_file": doc.metadata.get("source_file", "unknown"),
+        "file_type": doc.metadata.get("file_type", "unknown"),
+        "chunk_id": i
+    }
+}
 
         points.append(
             models.PointStruct(
@@ -106,31 +131,38 @@ def embed_and_store(chunks):
             )
         )
 
-        # Mongo metadata
+        # store metadata in Mongo
         store_doc_metadata(
             doc_id=doc_id,
-            source_file=doc.metadata.get("source_file"),
+            source_file=doc.metadata.get("source_file", "unknown"),
             chunk_id=i,
-            metadata=doc.metadata
+            metadata=payload["metadata"]  # ✅ pass the metadata dict
         )
 
     client.upsert(
         collection_name=COLLECTION_NAME,
-        points=points
+        points=points,
     )
+
+    print("✅ Stored in Qdrant successfully")
 
     return len(points)
 
-
-# -------------------------
-# FULL PIPELINE
-# -------------------------
+# =========================================================
+# MAIN INGEST FUNCTION
+# =========================================================
 
 def ingest_file(path: Path):
 
+    print(f"\n📥 Ingesting file: {path.name}")
+
     docs = load_file(path)
+
     chunks = split_docs(docs)
+
     count = embed_and_store(chunks)
+
+    print("🎉 Ingestion complete\n")
 
     return {
         "pages": len(docs),
