@@ -1,28 +1,55 @@
-# ===== Core LangChain Stack =====
-langchain>=0.2.0
-langchain-community>=0.2.0
-langchain-text-splitters>=0.2.0
-langchain-ollama>=0.1.0
+# ================================
+# Core Backend Framework
+# ================================
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+pydantic==2.6.4
+python-multipart==0.0.9
 
-# ===== Embeddings =====
-sentence-transformers>=2.6.0
+# ================================
+# LangChain Ecosystem
+# ================================
+langchain==0.2.11
+langchain-core==0.2.26
+langchain-community==0.2.10
+langchain-text-splitters==0.2.2
+langchain-qdrant==0.1.4
+langchain-huggingface==0.0.3
+langchain-ollama==0.1.3
 
-# ===== Vector Database =====
-qdrant-client>=1.9.0
+# ================================
+# Embeddings & ML
+# ================================
+sentence-transformers==2.7.0
+transformers==4.44.2
+torch==2.3.1
+numpy==1.26.4
+scikit-learn==1.5.1
 
-# ===== API Backend =====
-fastapi>=0.110.0
-uvicorn[standard]>=0.29.0
-python-multipart>=0.0.9
+# ================================
+# Vector Database
+# ================================
+qdrant-client==1.10.1
 
-# ===== Document Loaders =====
-pypdf>=4.2.0
-unstructured>=0.14.0
-markdown>=3.6
+# ================================
+# MongoDB
+# ================================
+pymongo==4.8.0
 
-# ===== Validation / Schemas =====
-pydantic>=2.6.0
+# ================================
+# Document Processing
+# ================================
+pypdf==4.3.1
+unstructured==0.15.7
+markdown==3.7
 
-# ===== Utilities =====
-numpy>=1.26.0
-scikit-learn>=1.4.0
+# ================================
+# Streamlit Frontend
+# ================================
+streamlit==1.36.0
+requests==2.32.3
+
+# ================================
+# Utilities
+# ================================
+python-dotenv==1.0.1
