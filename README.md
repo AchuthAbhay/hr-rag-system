@@ -6,7 +6,7 @@
 
 RAG-based HR automation system with semantic retrieval, grounded Q&A, AI email generation, confidence scoring, and analytics dashboard.
 
-Built with **FastAPI + Qdrant + MongoDB + LangChain + Local LLMs (Ollama)**.
+Built with **FastAPI + Qdrant + MongoDB + LangChain +  LLM (Groq)**.
 
 
 
@@ -41,7 +41,7 @@ HR RAG allows organizations to:
 - 🧬 **Vector Embeddings** — Sentence-Transformers (all-MiniLM-L6-v2, 384-dimensional)
 - 🗄 **Dual Database Architecture** — Qdrant (vector search) + MongoDB (metadata/traceability)
 - 🔎 **Semantic Search API** — Top-K retrieval with similarity scoring
-- 💬 **RAG-based Q&A** — Context-grounded answers using local LLM (Ollama/Mistral)
+- 💬 **RAG-based Q&A** — Context-grounded answers using local LLM (Groq)
 - 📤 **Document Upload API** — Automated parsing, chunking, and indexing
 - 📊 **Retrieval Evaluation** — Keyword-hit metrics and quality scoring
 - 🧪 **Guardrails & Confidence** — Answer confidence scoring and grounding checks
@@ -81,7 +81,7 @@ Top-K Context Retrieval
 Confidence Scoring Layer
 │
 ▼
-Local LLM (Ollama / Mistral)
+LLM (Groq)
 │
 ▼
 Grounded Answer +E-mail genration+ Sources + Confidence Score
@@ -129,7 +129,7 @@ HR_RAG/
 | **Vector Database** | Qdrant |
 | **Metadata Store** | MongoDB |
 | **Embeddings** | Sentence-Transformers (all-MiniLM-L6-v2) |
-| **LLM** | Ollama (Mistral) |
+| **LLM** | Groq |
 | **Document Processing** | PyPDF2, python-docx, Markdown |
 | **Chunking** | LangChain RecursiveCharacterTextSplitter |
 | **Language** | Python 3.10+ |
@@ -214,5 +214,5 @@ Helps monitor system quality and usage in production.
 - [LangChain](https://langchain.com/) for RAG abstractions
 - [Qdrant](https://qdrant.tech/) for high-performance vector search
 - [Sentence-Transformers](https://www.sbert.net/) for embedding models
-- [Ollama](https://ollama.ai/) for local LLM inference
+- [Groq](https://console.groq.com/home) for LLM inference
 

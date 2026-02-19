@@ -1,4 +1,6 @@
-from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
+import os
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -7,6 +9,9 @@ from langchain_qdrant import QdrantVectorStore
 
 
 from qdrant_client import QdrantClient
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 # -------------------------
@@ -44,9 +49,10 @@ def get_vectorstore():
 
 def build_chain(retriever):
 
-    llm = ChatOllama(
-        model="mistral",
-        temperature=0
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant",
+        temperature=0,
+        api_key=os.getenv("GROQ_API_KEY")
     )
 
     prompt = ChatPromptTemplate.from_messages([
@@ -55,7 +61,7 @@ def build_chain(retriever):
         "Answer ONLY using the provided context. "
         "Do NOT perform calculations unless explicitly stated in the policy. "
         "Do NOT combine categories into totals unless policy explicitly defines a total. "
-         "If unsure, say you don't know."),
+        "If unsure, say you don't know."),
 
         ("human",
          "Context:\n{context}\n\nQuestion: {question}")

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from pathlib import Path
 import shutil
 
-from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -13,10 +13,15 @@ from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from app.rag.confidence import compute_confidence
 import re
+import os
 
 from app.ingest.pipeline import ingest_file
 from app.db.mongo import log_query
 from app.db.mongo import get_query_analytics
+
+
+from dotenv import load_dotenv
+load_dotenv()
 
 # =========================================================
 # CONFIG
@@ -79,10 +84,11 @@ embeddings = HuggingFaceEmbeddings(
 
 client = QdrantClient(QDRANT_URL)
 
-llm = ChatOllama(
-    model="mistral",
-    temperature=0
-)
+llm = ChatGroq(
+        model="llama-3.1-8b-instant",
+        temperature=0,
+        api_key=os.getenv("GROQ_API_KEY")
+    )
 
 prompt = ChatPromptTemplate.from_messages([
     (
