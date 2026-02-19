@@ -4,13 +4,20 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A production-ready **Retrieval-Augmented Generation (RAG)** system for HR knowledge management that enables semantic search and context-grounded question answering over HR policy documents (PDF, TXT, Markdown).
+RAG-based HR automation system with semantic retrieval, grounded Q&A, AI email generation, confidence scoring, and analytics dashboard.
 
 Built with **FastAPI + Qdrant + MongoDB + LangChain + Local LLMs (Ollama)**.
 
 
 
-![UI](images/hrui.jpeg)
+![ChatUI](images/ui1.jpeg)
+
+![E-mail](images/ui2.jpeg)
+
+![Dashboard](images/dashb.jpeg)
+
+![Dashboard](images/dashb2.jpeg)
+
 
 ---
 
@@ -39,57 +46,51 @@ HR RAG allows organizations to:
 - 📊 **Retrieval Evaluation** — Keyword-hit metrics and quality scoring
 - 🧪 **Guardrails & Confidence** — Answer confidence scoring and grounding checks
 - 🐳 **Docker-Ready** — Containerized vector DB and MongoDB setup
+- ✉️ **AI Email Generator** — Automatically generates HR emails (leave requests, resignation, approvals) grounded in company policies
 
 ### Advanced Features
-- **Query Expansion** — Multi-query generation for improved recall
-- **Reranking Layer** — Post-retrieval relevance optimization
-- **Source Attribution** — Document ID and chunk references for every answer
-- **Modular Pipeline** — Pluggable components for embeddings, retrieval, and LLMs
+- **Confidence Scoring Layer** — Combines similarity score, keyword coverage, and retrieval completeness
+- **Source Attribution** — Document references for every answer
+- **MongoDB Query Logging** — Stores user queries, retrieved sources, and confidence scores
+- **Analytics Dashboard** — Streamlit-based dashboard for monitoring usage and performance
+- **Strict Grounding Guardrails** — Prevents hallucination by enforcing context-only answering
+- **Modular Architecture** — Pluggable embeddings, vector DB, and LLM components
+
+
 
 ---
 
 ## 🏗 System Architecture
 
 ```
-┌─────────────┐
-│ User Query  │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────┐
-│  FastAPI Backend    │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ Embedding Model     │
-│ (MiniLM-L6-v2)      │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ Qdrant Vector       │
-│ Similarity Search   │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ Top-K Context       │
-│ Retrieval           │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ Local LLM           │
-│ (Ollama/Mistral)    │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ Grounded Answer     │
-│ + Source References │
-└─────────────────────┘
+User Query
+│
+▼
+FastAPI Backend
+│
+▼
+Embedding Model (MiniLM-L6-v2)
+│
+▼
+Qdrant Vector Search
+│
+▼
+Top-K Context Retrieval
+│
+▼
+Confidence Scoring Layer
+│
+▼
+Local LLM (Ollama / Mistral)
+│
+▼
+Grounded Answer +E-mail genration+ Sources + Confidence Score
+│
+▼
+MongoDB Logging
 ```
+
+This architecture enables scalable HR automation including semantic search, grounded question answering, AI email generation, and analytics monitoring using a dual-database design.
 
 **Dual Database Design:**
 - **Qdrant** → Vector similarity search for semantic retrieval
@@ -103,28 +104,19 @@ HR RAG allows organizations to:
 HR_RAG/
 ├── app/
 │   ├── api/
-│   │   ├── __init__.py
-│   │   └── main.py              # FastAPI endpoints (search, QA, upload, eval)
+│   │   ├── main.py              # FastAPI endpoints (QA, search, upload, analytics)
 │   ├── db/
-│   │   ├── __init__.py
-│   │   └── mongo.py             # MongoDB metadata layer
+│   │   └── mongo.py             # MongoDB logging and analytics
 │   ├── ingest/
-│   │   ├── __init__.py
-│   │   └── ingest_hr_docs.py   # Document ingestion pipeline
-│   └── pipeline.py              # File processing pipeline
-├── rag/
-│   ├── __init__.py
-│   ├── rag_engine.py            # Core RAG logic
-│   ├── reranker.py              # Post-retrieval reranking
-│   ├── evaluator.py             # Retrieval evaluation metrics
-│   ├── query_expander.py        # Multi-query expansion
-│   └── confidence.py            # Answer confidence scoring
+│   │   └── pipeline.py          # Document ingestion pipeline
+│   └── rag/
+│       ├── confidence.py        # Confidence scoring logic
+│       └── rag_engine.py        # Retrieval utilities
 ├── data/
-│   ├── hr_docs/                 # Base HR documents
-│   └── uploads/                 # API-uploaded documents
-├── ui/
-├── requirements.txt             # Python dependencies
-└── README.md                    # This file
+│   ├── uploads/                 # Uploaded documents
+├── ui_streamlit.py              # Streamlit Chat UI + Analytics dashboard
+├── requirements.txt
+└── README.md                
 ```
 
 ---
@@ -137,12 +129,76 @@ HR_RAG/
 | **Vector Database** | Qdrant |
 | **Metadata Store** | MongoDB |
 | **Embeddings** | Sentence-Transformers (all-MiniLM-L6-v2) |
-| **LLM** | Ollama (Mistral, Llama2, etc.) |
+| **LLM** | Ollama (Mistral) |
 | **Document Processing** | PyPDF2, python-docx, Markdown |
 | **Chunking** | LangChain RecursiveCharacterTextSplitter |
 | **Language** | Python 3.10+ |
+| **Confidence Evaluation** | Custom scoring pipeline |
+| **Frontend** | Streamlit |
 
 ---
+## 📊 Confidence Scoring System
+
+Each answer includes a confidence score calculated using:
+
+- Vector similarity score
+- Keyword coverage ratio
+- Retrieval completeness
+
+Formula:
+
+Confidence =
+0.5 × similarity score +
+0.3 × keyword coverage +
+0.2 × retrieval completeness
+
+This ensures answer reliability and detectability of weak retrieval.
+
+
+## ✉️ AI Email Generation
+
+The system supports automated generation of HR-related emails grounded in company policies.
+
+Examples:
+
+- Sick leave request
+- Resignation email
+- Leave extension request
+- HR clarification email
+- Policy inquiry email
+
+Features:
+
+- Context-grounded generation using company documents
+- Prevents hallucination
+- Includes confidence score
+- Provides source traceability
+
+Example API:
+
+POST /generate-email
+
+Response:
+
+{
+  "email": "...generated email...",
+  "sources": ["hr-policy.pdf"],
+  "confidence": 0.91
+}
+
+
+## 📈 Analytics Dashboard
+
+Built with Streamlit and MongoDB, the dashboard provides:
+
+- Total queries
+- Average confidence score
+- Most frequent questions
+- Most used documents
+- Retrieval performance metrics
+
+Helps monitor system quality and usage in production.
+
 
 
 ## 👤 Author
