@@ -204,7 +204,7 @@ elif page == "📊 Analytics Dashboard":
 
                 st.dataframe(
                     df_q,
-                    use_container_width=True
+                    width="stretch"
                 )
 
                 st.bar_chart(
@@ -230,7 +230,7 @@ elif page == "📊 Analytics Dashboard":
 
                 st.dataframe(
                     df_s,
-                    use_container_width=True
+                    width="stretch"
                 )
 
                 st.bar_chart(
