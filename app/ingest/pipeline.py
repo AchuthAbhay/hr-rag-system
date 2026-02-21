@@ -1,5 +1,7 @@
 from pathlib import Path
 import uuid
+import os
+from dotenv import load_dotenv
 
 from langchain_community.document_loaders import (
     PyPDFLoader,
@@ -13,21 +15,57 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from qdrant_client import QdrantClient, models
 
 from app.db.mongo import store_doc_metadata
-from dotenv import load_dotenv
-import os 
+
+
+# =========================================================
+# LOAD ENVIRONMENT VARIABLES
+# =========================================================
+
 load_dotenv()
-
-
-# =========================================================
-# CONFIG
-# =========================================================
 
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+
 COLLECTION_NAME = "hr_knowledge_base"
 
 CHUNK_SIZE = 700
 CHUNK_OVERLAP = 100
+
+
+# =========================================================
+# EMBEDDINGS (Lazy Singleton - Render Safe)
+# =========================================================
+
+_embeddings = None
+
+def get_embeddings():
+    """
+    Lazy load embedding model.
+    Prevents multiple loads and saves memory on Render.
+    """
+    global _embeddings
+
+    if _embeddings is None:
+        print("🔹 Loading embedding model...")
+        _embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+
+    return _embeddings
+
+
+# =========================================================
+# QDRANT CLIENT
+# =========================================================
+
+def get_qdrant_client():
+    """
+    Create Qdrant client using cloud credentials.
+    """
+    return QdrantClient(
+        url=QDRANT_URL,
+        api_key=QDRANT_API_KEY,
+    )
 
 
 # =========================================================
@@ -52,7 +90,7 @@ def load_file(path: Path):
 
     docs = loader.load()
 
-    # attach metadata correctly
+    # Attach metadata
     for d in docs:
         d.metadata["source_file"] = path.name
         d.metadata["file_type"] = suffix.replace(".", "")
@@ -61,7 +99,7 @@ def load_file(path: Path):
 
 
 # =========================================================
-# SPLIT DOCS
+# SPLIT DOCUMENTS
 # =========================================================
 
 def split_docs(docs):
@@ -78,39 +116,41 @@ def split_docs(docs):
 
 
 # =========================================================
-# STORE IN QDRANT (CRITICAL FIX HERE)
+# CREATE COLLECTION IF NOT EXISTS
 # =========================================================
 
-def embed_and_store(chunks):
+def ensure_collection(client, vector_size):
 
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-
-    client = QdrantClient(
-    url=QDRANT_URL,
-    api_key=QDRANT_API_KEY,
-)
-
-    print("📐 Creating embeddings...")
-
-    texts = [c.page_content for c in chunks]
-    vectors = embeddings.embed_documents(texts)
-
-    # recreate collection cleanly
     if client.collection_exists(COLLECTION_NAME):
-        print("🗑 Collection exists. Deleting...")
-        client.delete_collection(COLLECTION_NAME)
+        return
 
-    print("🗄 Creating collection...")
+    print("🗄 Creating new collection...")
 
     client.create_collection(
         collection_name=COLLECTION_NAME,
         vectors_config=models.VectorParams(
-            size=len(vectors[0]),
+            size=vector_size,
             distance=models.Distance.COSINE,
         ),
     )
+
+
+# =========================================================
+# EMBED AND STORE
+# =========================================================
+
+def embed_and_store(chunks):
+
+    embeddings = get_embeddings()
+    client = get_qdrant_client()
+
+    print("📐 Creating embeddings...")
+
+    texts = [c.page_content for c in chunks]
+
+    vectors = embeddings.embed_documents(texts)
+
+    ensure_collection(client, len(vectors[0]))
 
     print("⬆ Uploading vectors...")
 
@@ -120,30 +160,29 @@ def embed_and_store(chunks):
 
         doc_id = str(uuid.uuid4())
 
-        # ✅ NESTED PAYLOAD (LangChain-compatible)
         payload = {
-    "page_content": doc.page_content,
-    "metadata": {
-        "source_file": doc.metadata.get("source_file", "unknown"),
-        "file_type": doc.metadata.get("file_type", "unknown"),
-        "chunk_id": i
-    }
-}
+            "page_content": doc.page_content,
+            "metadata": {
+                "source_file": doc.metadata.get("source_file", "unknown"),
+                "file_type": doc.metadata.get("file_type", "unknown"),
+                "chunk_id": i,
+            },
+        }
 
         points.append(
             models.PointStruct(
                 id=doc_id,
                 vector=vec,
-                payload=payload
+                payload=payload,
             )
         )
 
-        # store metadata in Mongo
+        # Store metadata in MongoDB
         store_doc_metadata(
             doc_id=doc_id,
-            source_file=doc.metadata.get("source_file", "unknown"),
+            source_file=payload["metadata"]["source_file"],
             chunk_id=i,
-            metadata=payload["metadata"]  # ✅ pass the metadata dict
+            metadata=payload["metadata"],
         )
 
     client.upsert(
@@ -154,6 +193,7 @@ def embed_and_store(chunks):
     print("✅ Stored in Qdrant successfully")
 
     return len(points)
+
 
 # =========================================================
 # MAIN INGEST FUNCTION
@@ -174,5 +214,5 @@ def ingest_file(path: Path):
     return {
         "pages": len(docs),
         "chunks": len(chunks),
-        "vectors": count
+        "vectors": count,
     }

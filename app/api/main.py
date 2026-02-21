@@ -3,6 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
 import shutil
+import re
+import os
+
+from dotenv import load_dotenv
+load_dotenv()
+
+# ============================
+# LangChain / AI imports
+# ============================
 
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
@@ -11,17 +20,15 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from app.rag.confidence import compute_confidence
-import re
-import os
+
+# ============================
+# Internal imports
+# ============================
 
 from app.ingest.pipeline import ingest_file
-from app.db.mongo import log_query
-from app.db.mongo import get_query_analytics
+from app.db.mongo import log_query, get_query_analytics
+from app.rag.confidence import compute_confidence
 
-
-from dotenv import load_dotenv
-load_dotenv()
 
 # =========================================================
 # CONFIG
@@ -29,6 +36,8 @@ load_dotenv()
 
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
 COLLECTION_NAME = "hr_knowledge_base"
 
 UPLOAD_DIR = Path("data/uploads")
@@ -55,44 +64,56 @@ app.add_middleware(
 
 
 # =========================================================
-# REQUEST MODELS
+# LAZY LOAD GLOBALS (CRITICAL FOR RENDER MEMORY)
 # =========================================================
 
-class QuestionRequest(BaseModel):
-    question: str
-    k: int = 8
+_embeddings = None
+_client = None
 
 
-class SearchRequest(BaseModel):
-    query: str
-    k: int = 8
+def get_embeddings():
+    global _embeddings
+
+    if _embeddings is None:
+        print("🔹 Loading embedding model...")
+        _embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+
+    return _embeddings
 
 
-class EmailRequest(BaseModel):
-    request: str
-    k: int = 8
+def get_qdrant_client():
+    global _client
+
+    if _client is None:
+        print("🔹 Connecting to Qdrant Cloud...")
+        _client = QdrantClient(
+            url=QDRANT_URL,
+            api_key=QDRANT_API_KEY
+        )
+
+    return _client
 
 
 # =========================================================
-# GLOBAL COMPONENTS
+# LOAD GROQ LLM
 # =========================================================
 
-print("Loading embeddings and LLM...")
-
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
-
-client = QdrantClient(
-    url=QDRANT_URL,
-    api_key=QDRANT_API_KEY,
-)
+print("🔹 Loading Groq LLM...")
 
 llm = ChatGroq(
-        model="llama-3.1-8b-instant",
-        temperature=0,
-        api_key=os.getenv("GROQ_API_KEY")
-    )
+    model="llama-3.1-8b-instant",
+    temperature=0,
+    api_key=GROQ_API_KEY
+)
+
+print("✅ LLM ready.")
+
+
+# =========================================================
+# PROMPTS
+# =========================================================
 
 prompt = ChatPromptTemplate.from_messages([
     (
@@ -148,17 +169,40 @@ email_prompt = ChatPromptTemplate.from_messages([
 ])
 email_chain = email_prompt | llm | StrOutputParser()
 
-print("System ready.")
+
 
 
 # =========================================================
-# VECTORSTORE LOADER (CRITICAL FIX)
+# REQUEST MODELS
+# =========================================================
+
+class QuestionRequest(BaseModel):
+    question: str
+    k: int = 8
+
+
+class SearchRequest(BaseModel):
+    query: str
+    k: int = 8
+
+
+class EmailRequest(BaseModel):
+    request: str
+    k: int = 8
+
+
+# =========================================================
+# VECTORSTORE
 # =========================================================
 
 def get_vectorstore():
 
+    client = get_qdrant_client()
+
     if not client.collection_exists(COLLECTION_NAME):
         return None
+
+    embeddings = get_embeddings()
 
     return QdrantVectorStore(
         client=client,
@@ -166,7 +210,6 @@ def get_vectorstore():
         embedding=embeddings,
         content_payload_key="page_content",
         metadata_payload_key="metadata"
-        
     )
 
 
@@ -175,61 +218,46 @@ def get_vectorstore():
 # =========================================================
 
 def extract_source(doc):
-    """
-    Extract source from LangChain document.
-    """
     meta = doc.metadata or {}
-    
-    # After fix, source_file will be directly in metadata
+
     if "source_file" in meta:
         return meta["source_file"]
-        
+
     return "Unknown Source"
 
+
 def format_docs(docs):
-    """
-    Format documents into context string.
-    """
 
     formatted = []
 
     for d in docs:
-
-        source = extract_source(d) or "unknown"
-
-        formatted.append(
-            f"[Source: {source}]\n{d.page_content}"
-        )
+        source = extract_source(d)
+        formatted.append(f"[Source: {source}]\n{d.page_content}")
 
     return "\n\n".join(formatted)
 
 
-def extract_keywords(text: str):
-    """
-    Extract important keywords from question.
-    Simple production-safe keyword extraction.
-    """
+def extract_keywords(text):
+
     words = re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
 
     stopwords = {
-        "what", "when", "where", "which", "their", "there",
-        "about", "policy", "please", "tell", "does", "have",
-        "this", "that", "with", "from"
+        "what", "when", "where", "which",
+        "their", "there", "about",
+        "policy", "please", "tell"
     }
 
     return [w for w in words if w not in stopwords]
 
 
-def keyword_coverage(question: str, docs):
-    """
-    Measure keyword coverage inside retrieved chunks.
-    """
+def keyword_coverage(question, docs):
+
     keywords = extract_keywords(question)
 
     if not keywords:
         return 0, 0
 
-    combined = " ".join([d.page_content.lower() for d in docs])
+    combined = " ".join(d.page_content.lower() for d in docs)
 
     hits = sum(1 for k in keywords if k in combined)
 
@@ -246,7 +274,7 @@ def health():
 
 
 # =========================================================
-# SEARCH ENDPOINT
+# SEARCH
 # =========================================================
 
 @app.post("/search")
@@ -257,10 +285,7 @@ def search(req: SearchRequest):
     if vectorstore is None:
         return {"results": []}
 
-    docs = vectorstore.similarity_search(
-        req.query,
-        k=req.k
-    )
+    docs = vectorstore.similarity_search(req.query, k=req.k)
 
     return {
         "results": [
@@ -274,7 +299,7 @@ def search(req: SearchRequest):
 
 
 # =========================================================
-# ASK ENDPOINT (MAIN RAG)
+# ASK
 # =========================================================
 
 @app.post("/ask")
@@ -284,176 +309,69 @@ def ask(req: QuestionRequest):
 
     if vectorstore is None:
 
-        final_answer = "Knowledge base is empty. Please upload documents first."
+        answer = "Knowledge base is empty."
 
-        log_query(
-            question=req.question,
-            answer=final_answer,
-            sources=[],
-            confidence=0.0
-        )
+        log_query(req.question, answer, [], 0)
 
         return {
-            "answer": final_answer,
+            "answer": answer,
             "sources": [],
-            "confidence": 0.0
+            "confidence": 0
         }
 
-    # similarity search with score
     results = vectorstore.similarity_search_with_score(
         req.question,
         k=req.k
     )
 
-    if not results:
-
-        final_answer = "Not specified in policy."
-
-        log_query(
-            question=req.question,
-            answer=final_answer,
-            sources=[],
-            confidence=0.0
-        )
-
-        return {
-            "answer": final_answer,
-            "sources": [],
-            "confidence": 0.0
-        }
-
     docs = []
     scores = []
 
     for doc, score in results:
-
         docs.append(doc)
-
-        # convert Qdrant distance → similarity
-        similarity = 1 - score
-        scores.append(similarity)
+        scores.append(1 - score)
 
     avg_score = sum(scores) / len(scores)
 
-    # keyword coverage
     keyword_hits, expected_keywords = keyword_coverage(
         req.question,
         docs
     )
 
-    # confidence calculation
     confidence = compute_confidence(
-        avg_rerank_score=avg_score,
-        keyword_hits=keyword_hits,
-        expected_keywords=expected_keywords,
-        retrieved_chunks=len(docs),
-        k=req.k
+        avg_score,
+        keyword_hits,
+        expected_keywords,
+        len(docs),
+        req.k
     )
 
-    # build context
     context = format_docs(docs)
 
     answer = chain.invoke({
         "context": context,
         "question": req.question
-    })
+    }).strip()
 
-    final_answer = answer.strip()
+    sources = list(set(extract_source(d) for d in docs))
 
-    # extract sources
-    sources = list(set([
-        extract_source(d)
-        for d in docs
-    ]))
-
-    # ✅ QUERY LOGGING (CRITICAL ADDITION)
     log_query(
-        question=req.question,
-        answer=final_answer,
-        sources=sources,
-        confidence=confidence
+        req.question,
+        answer,
+        sources,
+        confidence
     )
 
     return {
-        "answer": final_answer,
+        "answer": answer,
         "sources": sources,
         "confidence": confidence
     }
 
+
 # =========================================================
-# DOCUMENT UPLOAD ENDPOINT
+# EMAIL
 # =========================================================
-
-@app.post("/upload-doc")
-def upload_doc(file: UploadFile = File(...)):
-
-    suffix = Path(file.filename).suffix.lower()
-
-    if suffix not in [".pdf", ".txt", ".md"]:
-
-        return {
-            "error": "Unsupported file type"
-        }
-
-    save_path = UPLOAD_DIR / file.filename
-
-    with open(save_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    stats = ingest_file(save_path)
-
-    return {
-        "status": "success",
-        "file": file.filename,
-        "stats": stats
-    }
-
-@app.get("/debug-qdrant")
-def debug_qdrant():
-
-    result = client.scroll(
-        collection_name=COLLECTION_NAME,
-        limit=5,
-        with_payload=True,
-        with_vectors=False
-    )
-
-    points = result[0]
-
-    output = []
-
-    for p in points:
-        output.append({
-            "id": str(p.id),
-            "payload": p.payload
-        })
-
-    return output
-
-
-@app.get("/debug/raw")
-def debug_raw():
-
-    result = client.scroll(
-        collection_name=COLLECTION_NAME,
-        limit=3,
-        with_payload=True,
-        with_vectors=False
-    )
-
-    points = result[0]
-
-    output = []
-
-    for p in points:
-
-        output.append({
-            "id": p.id,
-            "payload": p.payload
-        })
-
-    return output
-
 
 @app.post("/generate-email")
 def generate_email(req: EmailRequest):
@@ -461,23 +379,12 @@ def generate_email(req: EmailRequest):
     vectorstore = get_vectorstore()
 
     if vectorstore is None:
-        return {
-            "email": "Knowledge base empty.",
-            "sources": [],
-            "confidence": 0.0
-        }
+        return {"email": "Knowledge base empty"}
 
     docs = vectorstore.similarity_search(
         req.request,
         k=req.k
     )
-
-    if not docs:
-        return {
-            "email": "Unable to generate email.",
-            "sources": [],
-            "confidence": 0.0
-        }
 
     context = format_docs(docs)
 
@@ -486,33 +393,32 @@ def generate_email(req: EmailRequest):
         "request": req.request
     })
 
-    # Extract sources
-    sources = list(set([
-        extract_source(d)
-        for d in docs
-        if extract_source(d)
-    ]))
+    return {"email": email.strip()}
 
-    # Simple confidence calculation
-    avg_rerank_score = 0.8
-    keyword_hits = len(req.request.split())
-    expected_keywords = len(req.request.split())
-    retrieved_chunks = len(docs)
 
-    confidence = compute_confidence(
-        avg_rerank_score,
-        keyword_hits,
-        expected_keywords,
-        retrieved_chunks,
-        req.k
-    )
+# =========================================================
+# UPLOAD
+# =========================================================
+
+@app.post("/upload-doc")
+def upload_doc(file: UploadFile = File(...)):
+
+    path = UPLOAD_DIR / file.filename
+
+    with open(path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    stats = ingest_file(path)
 
     return {
-        "email": email.strip(),
-        "sources": sources,
-        "confidence": confidence
+        "status": "success",
+        "stats": stats
     }
 
+
+# =========================================================
+# ANALYTICS
+# =========================================================
 
 @app.get("/analytics")
 def analytics():
@@ -523,3 +429,22 @@ def analytics():
         "status": "success",
         "analytics": stats
     }
+
+
+# =========================================================
+# DEBUG
+# =========================================================
+
+@app.get("/debug-qdrant")
+def debug_qdrant():
+
+    client = get_qdrant_client()
+
+    result = client.scroll(
+        collection_name=COLLECTION_NAME,
+        limit=5,
+        with_payload=True,
+        with_vectors=False
+    )
+
+    return result[0]
