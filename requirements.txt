@@ -15,14 +15,18 @@ langchain-community==0.2.10
 langchain-text-splitters==0.2.2
 langchain-qdrant==0.1.4
 langchain-huggingface==0.0.3
-langchain-groq==0.1.9
+langchain-groq==0.1.5
 
 # ================================
 # Embeddings
 # ================================
 sentence-transformers==2.7.0
+
+# DO NOT install torch manually (sentence-transformers installs compatible one)
+
 numpy==1.26.4
-scikit-learn==1.5.1
+
+# REMOVE scikit-learn (not needed)
 
 # ================================
 # Vector Database
@@ -38,21 +42,23 @@ pymongo==4.8.0
 # Document Processing
 # ================================
 pypdf==4.3.1
-unstructured==0.15.7
-markdown==3.7
+
+# FIX: compatible version
+unstructured==0.10.30
+
+markdown==3.6
 
 # ================================
-# Streamlit Frontend
+# Frontend support
 # ================================
-streamlit==1.36.0
 requests==2.32.3
-
-# ================================
-# Groq API
-# ================================
-groq==0.11.0
 
 # ================================
 # Utilities
 # ================================
 python-dotenv==1.0.1
+
+# ================================
+# Groq
+# ================================
+groq==0.11.0
