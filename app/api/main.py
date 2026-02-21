@@ -27,7 +27,8 @@ load_dotenv()
 # CONFIG
 # =========================================================
 
-QDRANT_URL = "http://localhost:6333"
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 COLLECTION_NAME = "hr_knowledge_base"
 
 UPLOAD_DIR = Path("data/uploads")
@@ -59,17 +60,17 @@ app.add_middleware(
 
 class QuestionRequest(BaseModel):
     question: str
-    k: int = 6
+    k: int = 8
 
 
 class SearchRequest(BaseModel):
     query: str
-    k: int = 6
+    k: int = 8
 
 
 class EmailRequest(BaseModel):
     request: str
-    k: int = 6
+    k: int = 8
 
 
 # =========================================================
@@ -82,7 +83,10 @@ embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-client = QdrantClient(QDRANT_URL)
+client = QdrantClient(
+    url=QDRANT_URL,
+    api_key=QDRANT_API_KEY,
+)
 
 llm = ChatGroq(
         model="llama-3.1-8b-instant",
@@ -118,24 +122,23 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 chain = prompt | llm | StrOutputParser()
-
-
 email_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
-        "You are a strict HR assistant.\n\n"
+        "You are a professional HR assistant.\n\n"
 
-        "Write a professional HR email using ONLY the provided context.\n\n"
+        "Your job is to write a professional email based on the user's request.\n\n"
 
-        "STRICT RULES:\n"
-        "- Do NOT invent attachments.\n"
-        "- Do NOT invent actions not mentioned.\n"
-        "- Do NOT assume medical certificates, forms, or approvals.\n"
-        "- Only write what is requested.\n"
-        "- Use professional format.\n"
-        "- If policy details missing, write generic email without adding policy claims.\n"
-        "- Do NOT mention context.\n"
-        "- Do NOT hallucinate.\n"
+        "IMPORTANT RULES:\n"
+        "- You MAY write general professional emails even if exact scenario is not in policy.\n"
+        "- Use the provided context if relevant.\n"
+        "- Do NOT invent company policies, benefits, approvals, or rules.\n"
+        "- Do NOT claim policy support unless explicitly present in context.\n"
+        "- Do NOT invent attachments, medical certificates, or approvals.\n"
+        "- Keep the email professional, clear, and concise.\n"
+        "- Use proper email format with subject, greeting, body, and closing.\n"
+        "- Do NOT mention the context or policy in the email.\n"
+        "- Do NOT hallucinate company-specific rules.\n"
     ),
     (
         "human",
@@ -143,7 +146,6 @@ email_prompt = ChatPromptTemplate.from_messages([
         "User Request:\n{request}"
     )
 ])
-
 email_chain = email_prompt | llm | StrOutputParser()
 
 print("System ready.")

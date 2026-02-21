@@ -111,29 +111,32 @@ if page == "💬 Chat Assistant":
 
 
         with st.chat_message("assistant"):
+           with st.spinner("Thinking..."):
 
-            with st.spinner("Thinking..."):
+            if "email" in prompt.lower():
 
                 res = requests.post(
-                    f"{API}/ask",
-                    json={
-                        "question": prompt,
-                        "k": 6
-                    }
+                f"{API}/generate-email",
+                json={"request": prompt, "k": 8}
                 )
 
                 data = res.json()
+                answer = data["email"]
+                conf = data.get("confidence", 0)
 
+            else:
+
+                res = requests.post(
+                f"{API}/ask",
+                json={"question": prompt, "k": 8}
+                )
+
+                data = res.json()
                 answer = data["answer"]
-                confidence = data.get(
-                    "confidence", 0
-                )
+                conf = data.get("confidence", 0)
 
-                st.markdown(answer)
-
-                st.caption(
-                    f"Confidence: {confidence:.3f}"
-                )
+            st.markdown(answer)
+            st.caption(f"Confidence: {conf:.3f}")
 
         st.session_state.messages.append(
             {

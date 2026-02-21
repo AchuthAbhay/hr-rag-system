@@ -13,13 +13,17 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from qdrant_client import QdrantClient, models
 
 from app.db.mongo import store_doc_metadata
+from dotenv import load_dotenv
+import os 
+load_dotenv()
 
 
 # =========================================================
 # CONFIG
 # =========================================================
 
-QDRANT_URL = "http://localhost:6333"
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 COLLECTION_NAME = "hr_knowledge_base"
 
 CHUNK_SIZE = 700
@@ -83,7 +87,10 @@ def embed_and_store(chunks):
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
 
-    client = QdrantClient(QDRANT_URL)
+    client = QdrantClient(
+    url=QDRANT_URL,
+    api_key=QDRANT_API_KEY,
+)
 
     print("📐 Creating embeddings...")
 

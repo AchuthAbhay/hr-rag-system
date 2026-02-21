@@ -1,19 +1,30 @@
 from pymongo import MongoClient
 from datetime import datetime
 from collections import Counter
+from dotenv import load_dotenv
+import os
 
-MONGO_URL = "mongodb://localhost:27017"
+# Load .env
+load_dotenv()
+
+# Use Atlas connection
+MONGO_URL = os.getenv("MONGO_URL")
+
+# Create client
+client = MongoClient(MONGO_URL)
+
+# Database config
 DB_NAME = "hr_rag"
 COLLECTION = "documents"
 
-
-client = MongoClient(MONGO_URL)
 db = client[DB_NAME]
 docs_col = db[COLLECTION]
-
 query_logs_col = db["query_logs"]
 
 
+# =====================================================
+# STORE DOCUMENT METADATA
+# =====================================================
 
 def store_doc_metadata(doc_id, source_file, chunk_id, metadata):
 
@@ -28,9 +39,18 @@ def store_doc_metadata(doc_id, source_file, chunk_id, metadata):
     docs_col.insert_one(record)
 
 
+# =====================================================
+# GET DOC CHUNKS
+# =====================================================
+
 def get_doc_chunks(source_file):
     return list(docs_col.find({"source_file": source_file}))
 
+
+# =====================================================
+# LOG QUERY
+# =====================================================
+
 def log_query(question, answer, sources, confidence):
 
     record = {
@@ -44,21 +64,9 @@ def log_query(question, answer, sources, confidence):
     query_logs_col.insert_one(record)
 
 
-
-query_logs_col = db["query_logs"]
-
-
-def log_query(question, answer, sources, confidence):
-    record = {
-        "question": question,
-        "answer": answer,
-        "sources": sources,
-        "confidence": confidence,
-        "timestamp": datetime.utcnow()
-    }
-
-    query_logs_col.insert_one(record)
-
+# =====================================================
+# ANALYTICS
+# =====================================================
 
 def get_query_analytics():
 
@@ -72,7 +80,7 @@ def get_query_analytics():
             "top_sources": []
         }
 
-    # average confidence
+    # Average confidence
     pipeline = [
         {
             "$group": {
@@ -85,7 +93,7 @@ def get_query_analytics():
     avg_result = list(query_logs_col.aggregate(pipeline))
     avg_confidence = round(avg_result[0]["avg_conf"], 3)
 
-    # top questions
+    # Top questions
     questions = [
         q["question"]
         for q in query_logs_col.find({}, {"question": 1})
@@ -93,7 +101,7 @@ def get_query_analytics():
 
     top_questions = Counter(questions).most_common(5)
 
-    # top sources
+    # Top sources
     sources = []
 
     for doc in query_logs_col.find({}, {"sources": 1}):
