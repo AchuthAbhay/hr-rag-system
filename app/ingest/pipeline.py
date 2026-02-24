@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import (
     PyPDFLoader,
     TextLoader,
-    UnstructuredMarkdownLoader,
 )
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -79,24 +78,19 @@ def load_file(path: Path):
     if suffix == ".pdf":
         loader = PyPDFLoader(str(path))
 
-    elif suffix == ".txt":
+    elif suffix in [".txt", ".md", ".markdown"]:  # ✅ merged into one
         loader = TextLoader(str(path), encoding="utf-8")
-
-    elif suffix in [".md", ".markdown"]:
-        loader = UnstructuredMarkdownLoader(str(path))
 
     else:
         raise ValueError(f"Unsupported file type: {path.name}")
 
     docs = loader.load()
 
-    # Attach metadata
     for d in docs:
         d.metadata["source_file"] = path.name
         d.metadata["file_type"] = suffix.replace(".", "")
 
     return docs
-
 
 # =========================================================
 # SPLIT DOCUMENTS
