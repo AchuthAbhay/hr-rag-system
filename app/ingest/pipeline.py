@@ -9,7 +9,7 @@ from langchain_community.document_loaders import (
 )
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 
 from qdrant_client import QdrantClient, models
 
@@ -38,18 +38,13 @@ CHUNK_OVERLAP = 100
 _embeddings = None
 
 def get_embeddings():
-    """
-    Lazy load embedding model.
-    Prevents multiple loads and saves memory on Render.
-    """
     global _embeddings
-
     if _embeddings is None:
-        print("🔹 Loading embedding model...")
-        _embeddings = HuggingFaceEmbeddings(
+        print("🔹 Connecting to HuggingFace Inference API...")
+        _embeddings = HuggingFaceInferenceAPIEmbeddings(
+            api_key=os.getenv("HF_API_KEY"),
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
-
     return _embeddings
 
 

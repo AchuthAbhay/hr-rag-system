@@ -20,7 +20,7 @@ langchain-groq>=0.1.9
 # ================================
 # Embeddings
 # ================================
-sentence-transformers==2.7.0
+
 
 # DO NOT install torch manually (sentence-transformers installs compatible one)
 
