@@ -9,7 +9,7 @@ from langchain_community.document_loaders import (
 )
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
 from qdrant_client import QdrantClient, models
 
@@ -41,11 +41,12 @@ def get_embeddings():
     global _embeddings
     if _embeddings is None:
         print("🔹 Connecting to HuggingFace Inference API...")
-        _embeddings = HuggingFaceInferenceAPIEmbeddings(
-            api_key=os.getenv("HF_API_KEY"),
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        _embeddings = HuggingFaceEndpointEmbeddings(
+            model="sentence-transformers/all-MiniLM-L6-v2",
+            huggingfacehub_api_token=os.getenv("HF_API_KEY"),
         )
     return _embeddings
+
 
 
 # =========================================================
@@ -134,14 +135,19 @@ def embed_and_store(chunks):
     client = get_qdrant_client()
 
     print("📐 Creating embeddings...")
-
     texts = [c.page_content for c in chunks]
+
+    if not texts:
+        raise ValueError("No text chunks to embed")
 
     vectors = embeddings.embed_documents(texts)
 
+    if not vectors:
+        raise ValueError("Embedding API returned empty vectors")
+
     ensure_collection(client, len(vectors[0]))
 
-    print("⬆ Uploading vectors...")
+    print("⬆ Uploading vectors in batches...")
 
     points = []
 
@@ -166,7 +172,6 @@ def embed_and_store(chunks):
             )
         )
 
-        # Store metadata in MongoDB
         store_doc_metadata(
             doc_id=doc_id,
             source_file=payload["metadata"]["source_file"],
@@ -174,14 +179,19 @@ def embed_and_store(chunks):
             metadata=payload["metadata"],
         )
 
-    client.upsert(
-        collection_name=COLLECTION_NAME,
-        points=points,
-    )
+    # ✅ Upload in batches of 50 instead of all at once
+    BATCH_SIZE = 50
+    for i in range(0, len(points), BATCH_SIZE):
+        batch = points[i:i + BATCH_SIZE]
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=batch,
+        )
+        print(f"✅ Uploaded batch {i//BATCH_SIZE + 1} ({len(batch)} points)")
 
-    print("✅ Stored in Qdrant successfully")
-
+    print("✅ All vectors stored in Qdrant")
     return len(points)
+
 
 
 # =========================================================
